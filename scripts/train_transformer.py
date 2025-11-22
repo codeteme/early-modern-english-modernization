@@ -311,7 +311,7 @@ def build_dataloaders(
     return train_loader, dev_loader, src_vocab, tgt_vocab
 
 
-def set_seed(seed: int = 42):
+def set_seed(seed: int = 253):
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -348,7 +348,7 @@ def main():
     )
     args = parser.parse_args()
 
-    set_seed()
+    set_seed(253)
 
     train_file_early = f"data/{args.data}/train_early.txt"
     train_file_modern = f"data/{args.data}/train_modern.txt"

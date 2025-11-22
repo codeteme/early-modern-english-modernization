@@ -1,6 +1,7 @@
 """Evaluate a trained Transformer modernization model."""
 
 import argparse
+import random
 import sys
 import os
 from pathlib import Path
@@ -41,6 +42,12 @@ class EvalDataset(Dataset):
         return self.inner[idx]
 
 
+def set_seed(seed: int = 253):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a saved Transformer model.")
     parser.add_argument("--checkpoint", default="models/transformer_synthetic.pt")
@@ -55,6 +62,8 @@ def main():
     )
     parser.add_argument("--examples", type=int, default=5, help="Number of examples to print.")
     args = parser.parse_args()
+
+    set_seed(253)
 
     # Allow CharVocab objects inside checkpoints (trusted source).
     try:
