@@ -165,5 +165,5 @@ def scrape_multiple_works(work_ids, output_dir=TEXTS_DIR, delay=2, merge_prefixe
 
 
 if __name__ == "__main__":
-    work_ids = [1,2,3,4,5,6,7,8,9,10]
+    work_ids = work_ids = list(range(1, 31))
     scrape_multiple_works(work_ids, merge_prefixes=True)
