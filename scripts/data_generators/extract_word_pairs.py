@@ -11,25 +11,33 @@ from collections import Counter
 import pandas as pd
 from difflib import SequenceMatcher
 
+
 def clean_text(text):
     """Clean and normalize text"""
     # Remove title/header lines
-    lines = text.split('\n')
+    lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
         line = line.strip()
         # Skip metadata lines
-        if line.startswith('Title:') or line.startswith('Version:') or \
-           line.startswith('Source:') or line == '=' * 70 or not line:
+        if (
+            line.startswith("Title:")
+            or line.startswith("Version:")
+            or line.startswith("Source:")
+            or line == "=" * 70
+            or not line
+        ):
             continue
         cleaned_lines.append(line)
-    return ' '.join(cleaned_lines)
+    return " ".join(cleaned_lines)
+
 
 def tokenize_words(text):
     """Tokenize text into words, preserving original forms"""
     # Split on whitespace and extract words with apostrophes, hyphens
     words = re.findall(r"[a-zA-Z]+(?:[''-][a-zA-Z]+)*", text)
     return words
+
 
 def align_and_extract_pairs(old_text, new_text):
     """Extract word pairs from aligned parallel texts"""
@@ -42,17 +50,19 @@ def align_and_extract_pairs(old_text, new_text):
     matcher = SequenceMatcher(None, old_words, new_words)
 
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'replace' and (i2 - i1) == (j2 - j1) == 1:
+        if tag == "replace" and (i2 - i1) == (j2 - j1) == 1:
             # One-to-one word replacement (spelling difference)
             old_word = old_words[i1]
             new_word = new_words[j1]
 
             # Only keep if they're similar enough (likely spelling variant)
             # and not completely different words
-            similarity = SequenceMatcher(None, old_word.lower(), new_word.lower()).ratio()
+            similarity = SequenceMatcher(
+                None, old_word.lower(), new_word.lower()
+            ).ratio()
             if similarity > 0.5 and old_word.lower() != new_word.lower():
                 pairs.append((old_word, new_word))
-        elif tag == 'equal':
+        elif tag == "equal":
             # Identical words - add some for identity mapping
             for k in range(i1, min(i2, i1 + 2)):  # Limit to avoid too many
                 word = old_words[k]
@@ -61,15 +71,16 @@ def align_and_extract_pairs(old_text, new_text):
 
     return pairs
 
+
 def main():
     """Extract word pairs from all Shakespeare text pairs"""
-    data_dir = Path('data/texts')
+    data_dir = Path("data/texts")
 
     all_pairs = []
 
     # Find all directories with parallel texts
-    for old_file in data_dir.rglob('old_text.txt'):
-        new_file = old_file.parent / 'new_text.txt'
+    for old_file in data_dir.rglob("old_text.txt"):
+        new_file = old_file.parent / "new_text.txt"
 
         if not new_file.exists():
             continue
@@ -77,10 +88,10 @@ def main():
         print(f"Processing {old_file.parent.name}...")
 
         # Read files
-        with open(old_file, 'r', encoding='utf-8') as f:
+        with open(old_file, "r", encoding="utf-8") as f:
             old_text = f.read()
 
-        with open(new_file, 'r', encoding='utf-8') as f:
+        with open(new_file, "r", encoding="utf-8") as f:
             new_text = f.read()
 
         # Clean texts
@@ -99,14 +110,16 @@ def main():
     print(f"Unique pairs: {len(pair_counts)}")
 
     # Create DataFrame
-    df = pd.DataFrame([(old, new) for (old, new), count in pair_counts.items()],
-                     columns=['old', 'modern'])
+    df = pd.DataFrame(
+        [(old, new) for (old, new), count in pair_counts.items()],
+        columns=["old", "modern"],
+    )
 
     # Remove pairs where both are identical
-    df_diff = df[df['old'].str.lower() != df['modern'].str.lower()].copy()
+    df_diff = df[df["old"].str.lower() != df["modern"].str.lower()].copy()
 
     # Keep some identity mappings for robustness
-    df_same = df[df['old'].str.lower() == df['modern'].str.lower()].copy()
+    df_same = df[df["old"].str.lower() == df["modern"].str.lower()].copy()
     df_same = df_same.sample(n=min(200, len(df_same)), random_state=42)
 
     # Combine
@@ -117,7 +130,7 @@ def main():
     print(f"  - Identity mappings: {len(df_same)}")
 
     # Save
-    output_path = 'scripts/aligned_old_to_modern_extracted.csv'
+    output_path = "../data/processed/aligned_old_to_modern_extracted.csv"
     df_final.to_csv(output_path, index=False)
     print(f"\nSaved to {output_path}")
 
@@ -126,15 +139,20 @@ def main():
     print(df_final.head(20).to_string(index=False))
 
     # Combine with existing augmented data
-    existing_df = pd.read_csv('scripts/aligned_old_to_modern_augmented.csv')
+    existing_df = pd.read_csv("scripts/aligned_old_to_modern_augmented.csv")
     print(f"\nExisting augmented data: {len(existing_df)} pairs")
 
-    combined_df = pd.concat([existing_df, df_final]).drop_duplicates(subset=['old', 'modern']).reset_index(drop=True)
+    combined_df = (
+        pd.concat([existing_df, df_final])
+        .drop_duplicates(subset=["old", "modern"])
+        .reset_index(drop=True)
+    )
     print(f"Combined dataset: {len(combined_df)} pairs")
 
-    output_combined = 'scripts/aligned_old_to_modern_combined.csv'
+    output_combined = "data/processed/aligned_old_to_modern_combined.csv"
     combined_df.to_csv(output_combined, index=False)
     print(f"Saved combined dataset to {output_combined}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

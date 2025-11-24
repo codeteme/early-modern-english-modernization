@@ -14,7 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import (
     T5Tokenizer,
     T5ForConditionalGeneration,
-    get_linear_schedule_with_warmup
+    get_linear_schedule_with_warmup,
 )
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -67,35 +67,35 @@ class SpellingNormalizationDataset(Dataset):
         input_encoding = self.tokenizer(
             input_text,
             max_length=self.max_length,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
-            return_tensors='pt'
+            return_tensors="pt",
         )
 
         # Tokenize target
         target_encoding = self.tokenizer(
             modern_text,
             max_length=self.max_length,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
-            return_tensors='pt'
+            return_tensors="pt",
         )
 
-        labels = target_encoding['input_ids'].squeeze()
+        labels = target_encoding["input_ids"].squeeze()
         # Replace padding token id with -100 so it's ignored by loss
         labels[labels == self.tokenizer.pad_token_id] = -100
 
         return {
-            'input_ids': input_encoding['input_ids'].squeeze(),
-            'attention_mask': input_encoding['attention_mask'].squeeze(),
-            'labels': labels
+            "input_ids": input_encoding["input_ids"].squeeze(),
+            "attention_mask": input_encoding["attention_mask"].squeeze(),
+            "labels": labels,
         }
 
 
 class T5SpellingNormalizer:
     """T5-based spelling normalizer"""
 
-    def __init__(self, model_name='t5-small'):
+    def __init__(self, model_name="t5-small"):
         """
         Initialize with a pre-trained T5 model
 
@@ -108,7 +108,9 @@ class T5SpellingNormalizer:
         self.model.to(device)
 
         total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        trainable_params = sum(
+            p.numel() for p in self.model.parameters() if p.requires_grad
+        )
         print(f"Total parameters: {total_params:,}")
         print(f"Trainable parameters: {trainable_params:,}")
 
@@ -121,8 +123,8 @@ class T5SpellingNormalizer:
             df = df.head(max_samples)
             print(f"Limited to {max_samples} samples")
 
-        old_texts = df['old'].astype(str).tolist()
-        modern_texts = df['modern'].astype(str).tolist()
+        old_texts = df["old"].astype(str).tolist()
+        modern_texts = df["modern"].astype(str).tolist()
 
         print(f"Loaded {len(old_texts)} text pairs")
 
@@ -160,30 +162,20 @@ class T5SpellingNormalizer:
             self.train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=0  # Important for MPS
+            num_workers=0,  # Important for MPS
         )
-        val_loader = DataLoader(
-            self.val_dataset,
-            batch_size=batch_size,
-            num_workers=0
-        )
+        val_loader = DataLoader(self.val_dataset, batch_size=batch_size, num_workers=0)
 
         # Optimizer and scheduler
         optimizer = AdamW(self.model.parameters(), lr=lr, weight_decay=0.01)
         total_steps = len(train_loader) * epochs
         scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=warmup_steps,
-            num_training_steps=total_steps
+            optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
         )
 
-        history = {
-            'train_loss': [],
-            'val_loss': [],
-            'lr': []
-        }
+        history = {"train_loss": [], "val_loss": [], "lr": []}
 
-        best_val_loss = float('inf')
+        best_val_loss = float("inf")
         patience_counter = 0
         patience = 5
 
@@ -192,19 +184,17 @@ class T5SpellingNormalizer:
             self.model.train()
             train_loss = 0
 
-            pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs}')
+            pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
             for batch in pbar:
                 # Move batch to device
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
+                input_ids = batch["input_ids"].to(device)
+                attention_mask = batch["attention_mask"].to(device)
+                labels = batch["labels"].to(device)
 
                 optimizer.zero_grad()
 
                 outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels
+                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
                 )
 
                 loss = outputs.loss
@@ -215,16 +205,15 @@ class T5SpellingNormalizer:
                 scheduler.step()
 
                 # Clear MPS cache
-                if device.type == 'mps':
+                if device.type == "mps":
                     torch.mps.empty_cache()
 
                 train_loss += loss.item()
-                current_lr = optimizer.param_groups[0]['lr']
+                current_lr = optimizer.param_groups[0]["lr"]
 
-                pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'lr': f'{current_lr:.6f}'
-                })
+                pbar.set_postfix(
+                    {"loss": f"{loss.item():.4f}", "lr": f"{current_lr:.6f}"}
+                )
 
             train_loss /= len(train_loader)
 
@@ -234,47 +223,49 @@ class T5SpellingNormalizer:
 
             with torch.no_grad():
                 for batch in val_loader:
-                    input_ids = batch['input_ids'].to(device)
-                    attention_mask = batch['attention_mask'].to(device)
-                    labels = batch['labels'].to(device)
+                    input_ids = batch["input_ids"].to(device)
+                    attention_mask = batch["attention_mask"].to(device)
+                    labels = batch["labels"].to(device)
 
                     outputs = self.model(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
-                        labels=labels
+                        labels=labels,
                     )
 
                     val_loss += outputs.loss.item()
 
                     # Clear MPS cache
-                    if device.type == 'mps':
+                    if device.type == "mps":
                         torch.mps.empty_cache()
 
             val_loss /= len(val_loader)
 
-            history['train_loss'].append(train_loss)
-            history['val_loss'].append(val_loss)
-            history['lr'].append(current_lr)
+            history["train_loss"].append(train_loss)
+            history["val_loss"].append(val_loss)
+            history["lr"].append(current_lr)
 
-            print(f'Epoch {epoch+1}: Train Loss={train_loss:.4f}, '
-                  f'Val Loss={val_loss:.4f}, LR={current_lr:.6f}')
+            print(
+                f"Epoch {epoch+1}: Train Loss={train_loss:.4f}, "
+                f"Val Loss={val_loss:.4f}, LR={current_lr:.6f}"
+            )
 
             # Early stopping
             if val_loss < best_val_loss - 0.001:
                 best_val_loss = val_loss
-                self.model.save_pretrained('best_t5_model')
-                self.tokenizer.save_pretrained('best_t5_model')
+                self.model.save_pretrained("best_t5_model")
+                self.tokenizer.save_pretrained("best_t5_model")
                 patience_counter = 0
-                print(f'  → New best model saved! (val_loss: {val_loss:.4f})')
+                print(f"  → New best model saved! (val_loss: {val_loss:.4f})")
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
-                    print(f'Early stopping at epoch {epoch+1}')
+                    print(f"Early stopping at epoch {epoch+1}")
                     break
 
         # Load best model
         print("\nLoading best model...")
-        self.model = T5ForConditionalGeneration.from_pretrained('best_t5_model')
+        self.model = T5ForConditionalGeneration.from_pretrained("best_t5_model")
         self.model.to(device)
 
         self._plot_history(history)
@@ -285,23 +276,23 @@ class T5SpellingNormalizer:
         plt.figure(figsize=(12, 4))
 
         plt.subplot(1, 2, 1)
-        plt.plot(history['train_loss'], label='Train')
-        plt.plot(history['val_loss'], label='Validation')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
+        plt.plot(history["train_loss"], label="Train")
+        plt.plot(history["val_loss"], label="Validation")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
         plt.legend()
-        plt.title('Model Loss')
+        plt.title("Model Loss")
         plt.grid(True, alpha=0.3)
 
         plt.subplot(1, 2, 2)
-        plt.plot(history['lr'])
-        plt.xlabel('Step')
-        plt.ylabel('Learning Rate')
-        plt.title('Learning Rate Schedule')
+        plt.plot(history["lr"])
+        plt.xlabel("Step")
+        plt.ylabel("Learning Rate")
+        plt.title("Learning Rate Schedule")
         plt.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig('t5_training_history.png', dpi=150)
+        plt.savefig("t5_training_history.png", dpi=150)
         print("\nTraining history saved as 't5_training_history.png'")
         plt.close()
 
@@ -314,13 +305,13 @@ class T5SpellingNormalizer:
         input_encoding = self.tokenizer(
             input_text,
             max_length=max_length,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
-            return_tensors='pt'
+            return_tensors="pt",
         )
 
-        input_ids = input_encoding['input_ids'].to(device)
-        attention_mask = input_encoding['attention_mask'].to(device)
+        input_ids = input_encoding["input_ids"].to(device)
+        attention_mask = input_encoding["attention_mask"].to(device)
 
         with torch.no_grad():
             outputs = self.model.generate(
@@ -328,7 +319,7 @@ class T5SpellingNormalizer:
                 attention_mask=attention_mask,
                 max_length=max_length,
                 num_beams=4,
-                early_stopping=True
+                early_stopping=True,
             )
 
         normalized = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -351,11 +342,15 @@ class T5SpellingNormalizer:
             print(f"  Predicted:    {predicted_text}")
 
             # Simple accuracy check
-            match = "✓" if predicted_text.strip().lower() == modern_text.strip().lower() else "✗"
+            match = (
+                "✓"
+                if predicted_text.strip().lower() == modern_text.strip().lower()
+                else "✗"
+            )
             print(f"  Match: {match}")
             print()
 
-    def save_model(self, path='t5_spelling_normalizer'):
+    def save_model(self, path="t5_spelling_normalizer"):
         """Save model and tokenizer"""
         self.model.save_pretrained(path)
         self.tokenizer.save_pretrained(path)
@@ -364,32 +359,29 @@ class T5SpellingNormalizer:
 
 def main():
     """Main training script"""
-    CSV_PATH = 'scripts/aligned_old_to_modern_combined.csv'  # Using larger dataset (2,468 pairs)
+    CSV_PATH = "../data/processed/aligned_old_to_modern_extracted.csv"  # Using larger dataset (2,468 pairs)
 
     # Use t5-small for memory efficiency
     # Can upgrade to t5-base for better quality if you have more memory
-    normalizer = T5SpellingNormalizer(model_name='t5-small')
+    normalizer = T5SpellingNormalizer(model_name="t5-small")
     normalizer.prepare_data(CSV_PATH)
 
     # Fine-tune with conservative settings
     normalizer.train(
-        epochs=20,
-        batch_size=8,
-        lr=3e-4,  # Higher LR for fine-tuning
-        warmup_steps=200
+        epochs=20, batch_size=8, lr=3e-4, warmup_steps=200  # Higher LR for fine-tuning
     )
 
     normalizer.evaluate_on_test_set(num_examples=15)
     normalizer.save_model()
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("FINE-TUNING COMPLETE!")
-    print("="*80)
+    print("=" * 80)
 
     # Demo
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("INTERACTIVE DEMO")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     demo_texts = [
         "Proceed Solinus to procure my fall",
@@ -398,7 +390,7 @@ def main():
         "He hath bin out nine yeares",
         "haue",
         "yeares",
-        "beene"
+        "beene",
     ]
 
     for text in demo_texts:
@@ -407,5 +399,5 @@ def main():
         print(f"Modern: {normalized}\n")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

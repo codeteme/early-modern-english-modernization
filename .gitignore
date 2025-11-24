@@ -10,8 +10,9 @@ ENV/
 *.egg-info/
 
 # Data files (LARGE - don't commit)
+data/
 data/*.txt
-data/texts/*.txt
+data/raw/*.txt
 data/*.csv
 weights/*.csv
 

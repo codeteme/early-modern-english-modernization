@@ -266,7 +266,7 @@ def normalize_sentence_word_by_word(sentence, normalize_func):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Evaluate spelling normalization on sentences'
+        description='Evalu3ate spelling normalization on sentences'
     )
     parser.add_argument(
         '--model-type',
