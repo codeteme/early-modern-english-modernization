@@ -364,7 +364,7 @@ class T5SpellingNormalizer:
 
 def main():
     """Main training script"""
-    CSV_PATH = 'scripts/aligned_old_to_modern.csv'
+    CSV_PATH = 'scripts/aligned_old_to_modern_augmented.csv'
 
     # Use t5-small for memory efficiency
     # Can upgrade to t5-base for better quality if you have more memory
