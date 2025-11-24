@@ -9,3 +9,4 @@ torch>=2.0.0
 torchvision
 requests>=2.32.0
 transformers
+SentencePiece
