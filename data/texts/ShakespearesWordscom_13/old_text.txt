@@ -1,0 +1,28 @@
+Title: ShakespearesWords.com
+Version: First Folio
+Source: https://www.shakespeareswords.com/Public/Play.aspx?WorkId=13
+======================================================================
+
+Thunder and Lightning. Enter three Witches.
+1.
+WHen shall we three meet againe?
+In Thunder, Lightning, or in Raine?
+2.
+When the Hurley-burley's done,
+When the Battaile's lost, and wonne.
+3.
+That will be ere the set of Sunne.
+1.
+Where the place?
+2.
+Vpon the Heath.
+3.
+There to meet with Macbeth .
+1.
+I come, Gray-Malkin .
+Padock calls
+anon:
+All.
+faire is foule, and foule is faire,
+Houer through the fogge and filthie ayre.
+Exeunt .
