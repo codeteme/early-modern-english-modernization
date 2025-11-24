@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
-"""
-Extract word-level spelling pairs from parallel Shakespeare texts
-Creates a larger training dataset for the LSTM model
-"""
+"""Extract word-level spelling pairs from scraped Shakespeare texts."""
 
-import os
 import re
 from pathlib import Path
 from collections import Counter
@@ -12,14 +8,20 @@ import pandas as pd
 from difflib import SequenceMatcher
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TEXTS_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+EXTRACTED_PATH = PROCESSED_DIR / "aligned_old_to_modern_extracted.csv"
+AUGMENTED_PATH = PROCESSED_DIR / "aligned_old_to_modern_augmented.csv"
+COMBINED_PATH = PROCESSED_DIR / "aligned_old_to_modern_combined.csv"
+
+
 def clean_text(text):
-    """Clean and normalize text"""
-    # Remove title/header lines
+    """Strip metadata and collapse whitespace."""
     lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
         line = line.strip()
-        # Skip metadata lines
         if (
             line.startswith("Title:")
             or line.startswith("Version:")
@@ -33,14 +35,13 @@ def clean_text(text):
 
 
 def tokenize_words(text):
-    """Tokenize text into words, preserving original forms"""
-    # Split on whitespace and extract words with apostrophes, hyphens
+    """Tokenize text into words, preserving apostrophes and hyphens."""
     words = re.findall(r"[a-zA-Z]+(?:[''-][a-zA-Z]+)*", text)
     return words
 
 
 def align_and_extract_pairs(old_text, new_text):
-    """Extract word pairs from aligned parallel texts"""
+    """Extract word pairs from aligned parallel texts."""
     old_words = tokenize_words(old_text)
     new_words = tokenize_words(new_text)
 
@@ -56,7 +57,6 @@ def align_and_extract_pairs(old_text, new_text):
             new_word = new_words[j1]
 
             # Only keep if they're similar enough (likely spelling variant)
-            # and not completely different words
             similarity = SequenceMatcher(
                 None, old_word.lower(), new_word.lower()
             ).ratio()
@@ -73,8 +73,9 @@ def align_and_extract_pairs(old_text, new_text):
 
 
 def main():
-    """Extract word pairs from all Shakespeare text pairs"""
-    data_dir = Path("data/texts")
+    """Extract word pairs from all Shakespeare text pairs."""
+    data_dir = TEXTS_DIR
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     all_pairs = []
 
@@ -94,7 +95,6 @@ def main():
         with open(new_file, "r", encoding="utf-8") as f:
             new_text = f.read()
 
-        # Clean texts
         old_text = clean_text(old_text)
         new_text = clean_text(new_text)
 
@@ -120,7 +120,8 @@ def main():
 
     # Keep some identity mappings for robustness
     df_same = df[df["old"].str.lower() == df["modern"].str.lower()].copy()
-    df_same = df_same.sample(n=min(200, len(df_same)), random_state=42)
+    if not df_same.empty:
+        df_same = df_same.sample(n=min(200, len(df_same)), random_state=42)
 
     # Combine
     df_final = pd.concat([df_diff, df_same]).drop_duplicates().reset_index(drop=True)
@@ -129,29 +130,28 @@ def main():
     print(f"  - Different spellings: {len(df_diff)}")
     print(f"  - Identity mappings: {len(df_same)}")
 
-    # Save
-    output_path = "../data/processed/aligned_old_to_modern_extracted.csv"
-    df_final.to_csv(output_path, index=False)
-    print(f"\nSaved to {output_path}")
+    # Save extracted pairs
+    df_final.to_csv(EXTRACTED_PATH, index=False)
+    print(f"\nSaved to {EXTRACTED_PATH}")
 
     # Show sample
     print("\nSample pairs:")
     print(df_final.head(20).to_string(index=False))
 
-    # Combine with existing augmented data
-    existing_df = pd.read_csv("scripts/aligned_old_to_modern_augmented.csv")
-    print(f"\nExisting augmented data: {len(existing_df)} pairs")
+    # Combine with any augmented data if present
+    combined_sources = [df_final]
+    if AUGMENTED_PATH.exists():
+        augmented_df = pd.read_csv(AUGMENTED_PATH)
+        combined_sources.append(augmented_df)
+        print(f"\nFound augmented data: {len(augmented_df)} pairs")
 
-    combined_df = (
-        pd.concat([existing_df, df_final])
-        .drop_duplicates(subset=["old", "modern"])
-        .reset_index(drop=True)
-    )
+    combined_df = pd.concat(combined_sources).drop_duplicates(subset=["old", "modern"])
+    combined_df = combined_df.reset_index(drop=True)
     print(f"Combined dataset: {len(combined_df)} pairs")
 
-    output_combined = "data/processed/aligned_old_to_modern_combined.csv"
-    combined_df.to_csv(output_combined, index=False)
-    print(f"Saved combined dataset to {output_combined}")
+    COMBINED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    combined_df.to_csv(COMBINED_PATH, index=False)
+    print(f"Saved combined dataset to {COMBINED_PATH}")
 
 
 if __name__ == "__main__":
