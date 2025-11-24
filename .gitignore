@@ -1,3 +1,47 @@
-*.pyc
-data/*
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# Data files (LARGE - don't commit)
+data/*.txt
+data/texts/*.txt
+data/*.csv
+weights/*.csv
+
+# Keep structure but ignore content
+!data/.gitkeep
+!weights/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files
 models/
+*.pkl
+*.model
+
+# Results
+results/
+output/
+
+# Logs
+*.log
