@@ -103,3 +103,10 @@ tqdm>=4.62.0
 **Output:** `you are wise`
 
 **How:** Model learned from data that "thou→you" and "art→are" are common transformations with low cost.
+
+## Testing
+### Test T5 From Scratch
+python scripts/eval.py --model-type t5 --input-file test_sentences_challenging.txt
+
+### Test LSTM From Scratch
+python scripts/eval.py --model-type lstm --input-file test_sentences_challenging.txt
