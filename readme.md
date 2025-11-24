@@ -48,6 +48,15 @@ You are a wise man and know well enough.
   - Word-level: direct word mappings (thou→you)
   - Context-sensitive: surrounding character patterns
 
+We have two primarily files for our noisy channel model, `setup.py` and `translate.py`. Run the following to get the parallel corpus, train and test sets, and word pairs and frequencies based on the corpora.
+
+The model will actually run for the second script and we can see output for a random test set in the terminal. There is also an interactive option to put in your own sentences.
+
+```bash
+python scripts/setup.py
+python scripts/translate.py
+```
+
 **Novel Contribution:** Learns transformation patterns from data rather than using fixed rules.
 
 ## Expected Results
