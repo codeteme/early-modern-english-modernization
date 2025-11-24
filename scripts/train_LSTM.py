@@ -224,16 +224,16 @@ class SpellingNormalizer:
     def prepare_data(self, csv_path, test_size=0.15, val_size=0.15, augment=True):
         """Load and prepare data with optional augmentation
 
-        Makes model case-insensitive by lowercasing all inputs/outputs
+        Preserves case for better generalization
         """
         print("Loading data from CSV...")
         df = pd.read_csv(csv_path)
 
-        # Make case-insensitive by lowercasing everything
-        input_texts = df['old'].astype(str).str.lower().tolist()
-        target_texts = df['modern'].astype(str).str.lower().tolist()
+        # Preserve case for better generalization
+        input_texts = df['old'].astype(str).tolist()
+        target_texts = df['modern'].astype(str).tolist()
 
-        print(f"Loaded {len(input_texts)} text pairs (lowercased for case-insensitivity)")
+        print(f"Loaded {len(input_texts)} text pairs (case-preserved)")
 
         # Data augmentation to increase dataset size
         if augment:
@@ -586,22 +586,22 @@ class SpellingNormalizer:
 
 def main():
     """Main training script"""
-    CSV_PATH = 'scripts/aligned_old_to_modern_augmented.csv'
+    CSV_PATH = 'scripts/aligned_old_to_modern_combined.csv'
 
-    # Optimized for word-level aligned data
-    # Larger model since we have cleaner, focused data
+    # Optimized for word-level aligned data with larger dataset (2468 pairs)
+    # Larger model for better capacity
     # embedding_dim: 128, hidden_dim: 256, n_layers: 2 for better learning
     normalizer = SpellingNormalizer(embedding_dim=128, hidden_dim=256, n_layers=2)
-    normalizer.prepare_data(CSV_PATH)
+    normalizer.prepare_data(CSV_PATH, augment=True)
     normalizer.build_model()
 
-    # Optimized training for word-level pairs with augmented data
-    # Lower LR for stability with larger dataset
-    # Fewer epochs needed due to data augmentation
+    # Optimized training for larger dataset
+    # Higher learning rate for faster convergence with more data
+    # More epochs to fully leverage larger dataset
     normalizer.train(
-        epochs=50,
+        epochs=60,
         batch_size=32,  # Larger batch for better gradient estimates
-        lr=0.001,  # Lower LR for stability
+        lr=0.002,  # Higher LR for faster convergence with more data
         accumulation_steps=2,
         warmup_epochs=5
     )
@@ -611,24 +611,6 @@ def main():
     print("\n" + "="*80)
     print("TRAINING COMPLETE!")
     print("="*80)
-    
-    # Demo
-    print("\n" + "="*80)
-    print("INTERACTIVE DEMO")
-    print("="*80 + "\n")
-    
-    demo_texts = [
-        "Proceed Solinus to procure my fall",
-        "Yet this my comfort, when your words are done",
-        "I cannot conceiue you",
-        "He hath bin out nine yeares"
-    ]
-    
-    for text in demo_texts:
-        normalized = normalizer.normalize_text(text)
-        print(f"Old:    {text}")
-        print(f"Modern: {normalized}\n")
-
 
 if __name__ == '__main__':
     main()
