@@ -8,8 +8,8 @@ from collections import Counter
 
 
 def create_parallel_corpus(
-    old_file="data/old_merged.txt",
-    new_file="data/new_merged.txt",
+    old_file="../../data/old_merged.txt",
+    new_file="../../data/new_merged.txt",
     train_split=0.8
 ):
     """Step 1: Create parallel corpus and train/test split."""
@@ -31,13 +31,13 @@ def create_parallel_corpus(
     split_idx = int(min_len * train_split)
     
     # Train
-    with open('data/train_parallel.txt', 'w', encoding='utf-8') as f:
+    with open('../../data/train_parallel.txt', 'w', encoding='utf-8') as f:
         for i in range(split_idx):
             f.write(old_lines[i] + '\n')
             f.write(new_lines[i] + '\n')
     
     # Test
-    with open('data/test_parallel.txt', 'w', encoding='utf-8') as f:
+    with open('../../data/test_parallel.txt', 'w', encoding='utf-8') as f:
         for i in range(split_idx, min_len):
             f.write(old_lines[i] + '\n')
             f.write(new_lines[i] + '\n')
@@ -47,9 +47,10 @@ def create_parallel_corpus(
 
 
 def compute_word_weights(
-    aligned_csv="scripts/aligned_old_to_modern.csv",
-    old_corpus="data/old_merged.txt",
-    new_corpus="data/new_merged.txt"
+    aligned_csv="../../scripts/aligned_old_to_modern.csv",
+    old_corpus="../../data/old_merged.txt",
+    new_corpus="../../data/new_merged.txt",
+    train_file="../../data/train_parallel.txt"
 ):
     """Step 2: Compute word translation weights."""
     
@@ -76,15 +77,41 @@ def compute_word_weights(
     pair_counts = Counter()
     old_word_total = Counter()
     
-    with open(aligned_csv, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            old = row['old'].strip().lower()
-            modern = row['modern'].strip().lower()
-            pair_counts[(old, modern)] += 1
-            old_word_total[old] += 1
-    
-    print(f"Loaded {len(pair_counts)} word pair mappings\n")
+    # Try to load pre-existing alignment CSV, otherwise extract from parallel corpus
+    if os.path.exists(aligned_csv):
+        print(f"Loading alignments from: {aligned_csv}")
+        with open(aligned_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                old = row['old'].strip().lower()
+                modern = row['modern'].strip().lower()
+                pair_counts[(old, modern)] += 1
+                old_word_total[old] += 1
+        print(f"Loaded {len(pair_counts)} word pair mappings\n")
+    else:
+        print(f"No pre-existing alignment file found at: {aligned_csv}")
+        print("Extracting word alignments from parallel corpus...\n")
+        
+        # Extract alignments from parallel corpus
+        with open(train_file, 'r', encoding='utf-8') as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        for i in range(0, len(lines), 2):
+            if i+1 >= len(lines):
+                break
+            
+            old_line = lines[i].lower()
+            modern_line = lines[i+1].lower()
+            
+            old_line_words = re.findall(r'\b\w+\b', old_line)
+            modern_line_words = re.findall(r'\b\w+\b', modern_line)
+            
+            # Simple word-by-word alignment (assumes similar word order)
+            for old_word, modern_word in zip(old_line_words, modern_line_words):
+                pair_counts[(old_word, modern_word)] += 1
+                old_word_total[old_word] += 1
+        
+        print(f"Extracted {len(pair_counts)} word pair mappings from parallel corpus\n")
     
     # Compute weights
     weighted_pairs = []
@@ -122,7 +149,7 @@ def compute_word_weights(
     weighted_pairs.sort(key=lambda x: x['weight'])
     
     # Save
-    with open('data/word_weights.csv', 'w', newline='', encoding='utf-8') as f:
+    with open('../../data/word_weights.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'old', 'modern', 'pair_count', 'old_corpus_freq', 
             'modern_corpus_freq', 'p_translation', 'weight'

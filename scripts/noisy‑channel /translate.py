@@ -1,4 +1,4 @@
-"""Main translator: Old English → Modern English with spell correction."""
+"""Main translator: Old English → Modern English with 5-gram LM and add-k smoothing."""
 
 import csv
 import re
@@ -7,20 +7,22 @@ from collections import defaultdict, Counter
 
 
 class Translator:
-    """Complete translator with word weights, n-gram LM, spell correction, and context."""
+    """Complete translator with word weights, 5-gram LM with add-k smoothing, spell correction, and context."""
     
-    def __init__(self, n=4):
-        self.n = n
+    def __init__(self, n=5, k=0.5):
+        self.n = n  # 5-gram model
+        self.k = k  # Add-k smoothing parameter
         self.word_map = defaultdict(list)  # old -> [(modern, weight), ...]
         self.ngram_counts = Counter()
         self.context_counts = Counter()
         self.modern_vocab = Counter()
+        self.vocab_size = 0  # Size of character vocabulary for smoothing
         
         # Context-aware mappings: (prev_word, old_word) -> modern_word
         self.bigram_translations = defaultdict(Counter)
         self.trigram_translations = defaultdict(Counter)
         
-    def load_weights(self, weights_path="data/word_weights.csv"):
+    def load_weights(self, weights_path="../../data/word_weights.csv"):
         """Load word translation weights."""
         with open(weights_path, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
@@ -35,26 +37,67 @@ class Translator:
         
         print(f"✓ Loaded {len(self.word_map)} word mappings")
     
-    def train_lm(self, train_file="data/train_parallel.txt"):
-        """Train n-gram language model."""
+    def train_lm(self, train_file="../../data/train_parallel.txt"):
+        """Train 5-gram language model with add-k smoothing."""
         with open(train_file, 'r', encoding='utf-8') as f:
             lines = [line.strip() for line in f if line.strip()]
         
         modern_texts = [lines[i] for i in range(1, len(lines), 2)]
+        
+        # Collect character vocabulary
+        char_vocab = set()
         
         for text in modern_texts:
             text_lower = text.lower()
             words = re.findall(r'\b\w+\b', text_lower)
             self.modern_vocab.update(words)
             
+            # Collect characters for vocabulary size
+            char_vocab.update(text_lower)
+            
+            # Pad with n-1 start symbols and 1 end symbol
             padded = '^' * (self.n - 1) + text_lower + '$'
+            
+            # Count n-grams (5-grams)
             for i in range(len(padded) - self.n + 1):
-                context = padded[i:i + self.n - 1]
-                char = padded[i + self.n - 1]
+                context = padded[i:i + self.n - 1]  # 4 characters of context
+                char = padded[i + self.n - 1]       # 5th character
                 self.context_counts[context] += 1
                 self.ngram_counts[(context, char)] += 1
         
-        print(f"✓ Trained {self.n}-gram LM ({len(self.modern_vocab)} vocab)")
+        # Set vocabulary size (all unique characters seen + special symbols)
+        self.vocab_size = len(char_vocab) + 2  # +2 for ^ and $
+        
+        print(f"✓ Trained {self.n}-gram LM ({len(self.modern_vocab)} word vocab, {self.vocab_size} char vocab)")
+        print(f"  Add-k smoothing: k={self.k}")
+    
+    def get_ngram_prob(self, context, char):
+        """Get smoothed n-gram probability using add-k smoothing.
+        
+        P(char | context) = (count(context, char) + k) / (count(context) + k * V)
+        where V is the vocabulary size.
+        """
+        numerator = self.ngram_counts[(context, char)] + self.k
+        denominator = self.context_counts[context] + self.k * self.vocab_size
+        
+        if denominator == 0:
+            return 1.0 / self.vocab_size  # Uniform distribution fallback
+        
+        return numerator / denominator
+    
+    def score_word(self, word):
+        """Score a word using the 5-gram language model with add-k smoothing."""
+        word_lower = word.lower()
+        padded = '^' * (self.n - 1) + word_lower + '$'
+        
+        log_prob = 0.0
+        for i in range(len(padded) - self.n + 1):
+            context = padded[i:i + self.n - 1]
+            char = padded[i + self.n - 1]
+            prob = self.get_ngram_prob(context, char)
+            log_prob += math.log(prob)
+        
+        return log_prob
     
     def edit_distance(self, s1, s2):
         """Compute edit distance."""
@@ -76,7 +119,7 @@ class Translator:
         return previous_row[-1]
     
     def spell_correct(self, word, max_dist=2):
-        """Spell correct using edit distance + frequency."""
+        """Spell correct using edit distance + frequency + 5-gram LM."""
         word_lower = word.lower()
         
         # Already in vocab - no correction needed
@@ -96,10 +139,18 @@ class Translator:
                 continue  # Same word
             
             if dist <= max_dist:
-                # Score: higher frequency + lower distance = better
+                # Score components:
+                # 1. Frequency score
                 freq_score = math.log(freq + 1)
-                distance_penalty = dist * 3  # Stronger penalty
-                score = freq_score - distance_penalty
+                
+                # 2. Language model score (5-gram with add-k smoothing)
+                lm_score = self.score_word(vocab_word)
+                
+                # 3. Distance penalty
+                distance_penalty = dist * 3
+                
+                # Combined score: higher frequency + higher LM prob + lower distance = better
+                score = freq_score + 0.5 * lm_score - distance_penalty
                 candidates.append((vocab_word, score, dist, freq))
         
         if not candidates:
@@ -159,13 +210,13 @@ class Translator:
         return result, corrections
 
 
-def evaluate(translator, test_file="data/test_parallel.txt", n=20):
+def evaluate(translator, test_file="../../data/test_parallel.txt", n=20):
     """Evaluate on test set."""
     with open(test_file, 'r', encoding='utf-8') as f:
         lines = [line.strip() for line in f if line.strip()]
     
     print("\n" + "="*70)
-    print("EVALUATION")
+    print("EVALUATION (5-GRAM WITH ADD-K SMOOTHING)")
     print("="*70 + "\n")
     
     exact = 0
@@ -210,7 +261,7 @@ def evaluate(translator, test_file="data/test_parallel.txt", n=20):
 def interactive(translator):
     """Interactive mode."""
     print("\n" + "="*70)
-    print("INTERACTIVE MODE")
+    print("INTERACTIVE MODE (5-GRAM WITH ADD-K SMOOTHING)")
     print("="*70)
     print("Commands:")
     print("  <text>        - Translate text")
@@ -238,8 +289,8 @@ def interactive(translator):
 if __name__ == "__main__":
     import sys
     
-    print("Loading translator...")
-    t = Translator(n=4)
+    print("Loading translator with 5-gram LM and add-k smoothing...")
+    t = Translator(n=5, k=0.5)
     t.load_weights()
     t.train_lm()
     print()
