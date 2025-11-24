@@ -2,14 +2,96 @@
 """
 Evaluation script for spelling normalization models
 
-This script can evaluate both the T5 and LSTM models on whole sentences,
-processing them word-by-word or as complete phrases.
+This script evaluates both T5 and LSTM models on Old English text normalization.
+All model classes are embedded to avoid import issues.
+
+Usage:
+    python scripts/eval.py --model-type lstm --input "I cannot conceiue you"
+    python scripts/eval.py --model-type t5 --input-file test_sentences.txt
 """
 
 import argparse
 import torch
+import torch.nn as nn
 from pathlib import Path
 import re
+
+
+# ============================================================================
+# LSTM Model Classes (embedded to avoid import issues)
+# ============================================================================
+
+class Encoder(nn.Module):
+    """LSTM Encoder"""
+    def __init__(self, input_size, embedding_dim, hidden_dim, n_layers=2, dropout=0.3):
+        super(Encoder, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.embedding = nn.Embedding(input_size, embedding_dim, padding_idx=0)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, n_layers,
+                           batch_first=True, dropout=dropout if n_layers > 1 else 0,
+                           bidirectional=False)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        embedded = self.dropout(self.embedding(x))
+        outputs, (hidden, cell) = self.lstm(embedded)
+        return outputs, hidden, cell
+
+
+class Attention(nn.Module):
+    """Attention mechanism"""
+    def __init__(self, hidden_dim):
+        super(Attention, self).__init__()
+        self.attn = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.v = nn.Linear(hidden_dim, 1, bias=False)
+
+    def forward(self, hidden, encoder_outputs):
+        batch_size = encoder_outputs.shape[0]
+        seq_len = encoder_outputs.shape[1]
+        hidden = hidden.unsqueeze(1).repeat(1, seq_len, 1)
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))
+        attention = self.v(energy).squeeze(2)
+        return torch.softmax(attention, dim=1)
+
+
+class Decoder(nn.Module):
+    """LSTM Decoder with Attention"""
+    def __init__(self, output_size, embedding_dim, hidden_dim, n_layers=2, dropout=0.3):
+        super(Decoder, self).__init__()
+        self.output_size = output_size
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.embedding = nn.Embedding(output_size, embedding_dim, padding_idx=0)
+        self.attention = Attention(hidden_dim)
+        self.lstm = nn.LSTM(hidden_dim + embedding_dim, hidden_dim, n_layers,
+                           batch_first=True, dropout=dropout if n_layers > 1 else 0)
+        self.fc = nn.Linear(hidden_dim, output_size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, hidden, cell, encoder_outputs):
+        embedded = self.dropout(self.embedding(x))
+        attn_weights = self.attention(hidden[-1], encoder_outputs)
+        attn_weights = attn_weights.unsqueeze(1)
+        context = torch.bmm(attn_weights, encoder_outputs)
+        lstm_input = torch.cat((embedded, context), dim=2)
+        output, (hidden, cell) = self.lstm(lstm_input, (hidden, cell))
+        prediction = self.fc(output.squeeze(1))
+        return prediction, hidden, cell, attn_weights
+
+
+class Seq2Seq(nn.Module):
+    """Sequence-to-Sequence model"""
+    def __init__(self, encoder, decoder, device):
+        super(Seq2Seq, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.device = device
+
+
+# ============================================================================
+# T5 Model Loading
+# ============================================================================
 
 def load_t5_model(model_path='best_t5_model'):
     """Load a fine-tuned T5 model"""
@@ -29,14 +111,12 @@ def load_t5_model(model_path='best_t5_model'):
 
     model.to(device)
     model.eval()
-
     return model, tokenizer, device
 
 
 def normalize_with_t5(text, model, tokenizer, device, max_length=128):
     """Normalize text using T5 model"""
     input_text = f"normalize spelling: {text}"
-
     input_encoding = tokenizer(
         input_text,
         max_length=max_length,
@@ -62,13 +142,17 @@ def normalize_with_t5(text, model, tokenizer, device, max_length=128):
     return normalized
 
 
+# ============================================================================
+# LSTM Model Loading
+# ============================================================================
+
 def load_lstm_model(model_path='spelling_normalizer_pytorch.pt'):
     """Load a trained LSTM model"""
     print(f"Loading LSTM model from {model_path}...")
 
     checkpoint = torch.load(model_path, map_location='cpu')
 
-    # Reconstruct vocabularies and model
+    # Extract checkpoint data
     input_vocab = checkpoint['input_vocab']
     target_vocab = checkpoint['target_vocab']
     reverse_target_vocab = checkpoint['reverse_target_vocab']
@@ -77,20 +161,22 @@ def load_lstm_model(model_path='spelling_normalizer_pytorch.pt'):
     hidden_dim = checkpoint['hidden_dim']
     n_layers = checkpoint['n_layers']
 
-    # Import model classes
-    import sys
-    sys.path.append(str(Path(__file__).parent))
-    from scripts.train_LSTM import Encoder, Decoder, Seq2Seq
-
     # Device configuration
     if torch.backends.mps.is_available():
         device = torch.device("mps")
+        print("="*80)
+        print("DEVICE CONFIGURATION")
+        print("="*80)
+        print("✓ MPS (Metal Performance Shaders) is available!")
+        print("  Using Apple Silicon GPU acceleration")
+        print(f"  Device: {device}")
+        print("="*80 + "\n")
     elif torch.cuda.is_available():
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
 
-    # Build model
+    # Build model using embedded classes
     encoder = Encoder(len(input_vocab), embedding_dim, hidden_dim, n_layers)
     decoder = Decoder(len(target_vocab), embedding_dim, hidden_dim, n_layers)
     model = Seq2Seq(encoder, decoder, device).to(device)
@@ -110,8 +196,6 @@ def normalize_with_lstm(text, model, input_vocab, target_vocab, reverse_target_v
 
     with torch.no_grad():
         encoder_outputs, hidden, cell = model.encoder(input_tensor)
-
-        # Start with <START> token
         input_token = torch.tensor([[target_vocab['<START>']]]).to(device)
 
         decoded = []
@@ -131,16 +215,18 @@ def normalize_with_lstm(text, model, input_vocab, target_vocab, reverse_target_v
     return ''.join(decoded)
 
 
+# ============================================================================
+# Sentence Processing
+# ============================================================================
+
 def tokenize_sentence(sentence):
     """Split sentence into words while preserving punctuation and spacing"""
-    # Split on whitespace but keep track of positions
     words = []
     spaces = []
 
     tokens = sentence.split()
     for i, token in enumerate(tokens):
         words.append(token)
-        # Assume single space between words (can be improved)
         if i < len(tokens) - 1:
             spaces.append(' ')
 
@@ -160,7 +246,6 @@ def normalize_sentence_word_by_word(sentence, normalize_func):
             normalized_core = normalize_func(core)
             normalized_word = prefix + normalized_core + suffix
         else:
-            # Fallback for edge cases
             normalized_word = normalize_func(word)
 
         normalized_words.append(normalized_word)
@@ -174,6 +259,10 @@ def normalize_sentence_word_by_word(sentence, normalize_func):
 
     return ''.join(result)
 
+
+# ============================================================================
+# Main Function
+# ============================================================================
 
 def main():
     parser = argparse.ArgumentParser(
