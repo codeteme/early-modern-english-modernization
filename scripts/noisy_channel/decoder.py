@@ -1,136 +1,99 @@
-"""Enhanced noisy channel decoder with better candidate generation."""
+"""
+Noisy Channel Decoder.
+Combines Language Model (P(M)) and Channel Model (P(E|M)) to find best correction.
+"""
 
 import math
-import re
-from .language_model import CharNgramLM
-from .channel_model import ChannelModel
 
 
 class NoisyChannelDecoder:
     """Enhanced noisy channel model with smart candidate generation."""
 
-    def __init__(self, language_model, channel_model, lm_weight=1.0):
-        """
-        Args:
-            language_model: CharNgramLM instance
-            channel_model: ChannelModel instance
-            lm_weight: Weight for language model score
-        """
-        self.lm = language_model
+    def __init__(self, lm, channel_model, lm_weight=1.5):
+        self.lm = lm
         self.channel = channel_model
         self.lm_weight = lm_weight
 
-        # Build common transformation rules from learned weights
-        self._build_transformation_rules()
+        # Load the valid word list from the LM (if available)
+        if hasattr(lm, "known_words"):
+            self.vocab = lm.known_words
+        else:
+            self.vocab = set()
 
-    def _build_transformation_rules(self):
-        """Extract common word-level transformations from channel model."""
-        self.word_rules = {}
+    def _edits1(self, word):
+        """Generate all strings that are one edit distance away."""
+        letters = "abcdefghijklmnopqrstuvwxyz"
+        splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]
+        deletes = [L + R[1:] for L, R in splits if R]
+        transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]
+        replaces = [L + c + R[1:] for L, R in splits if R for c in letters]
+        inserts = [L + c + R for L, R in splits for c in letters]
+        return set(deletes + transposes + replaces + inserts)
 
-        if hasattr(self.channel, "word_mappings"):
-            # Get top transformations
-            for (early, modern), count in self.channel.word_mappings.most_common(100):
-                if count >= 2:  # Only if seen at least twice
-                    self.word_rules[early] = modern
+    def _edits2(self, word):
+        """Generate all strings that are two edits away."""
+        return (e2 for e1 in self._edits1(word) for e2 in self._edits1(e1))
 
-        print(f"Built {len(self.word_rules)} transformation rules")
+    def generate_candidates(self, word):
+        """Generate candidate corrections."""
+        word_lower = word.lower()
 
-    def score(self, modern, early):
-        """Score a (modern, early) pair."""
-        lm_score = self.lm.log_prob(modern)
-        channel_score = math.log(self.channel.channel_prob(modern, early))
+        # 1. Generate 1-edit candidates
+        candidates_1 = self._edits1(word_lower)
 
-        return self.lm_weight * lm_score + channel_score
+        # 2. Filter: Only keep candidates that are real words known to the LM
+        valid_candidates = {word_lower}
 
-    def decode_greedy(self, early_text, candidates=None):
-        """
-        Greedy decoding: choose best candidate.
+        if self.vocab:
+            # Add valid 1-edit words
+            valid_candidates.update(w for w in candidates_1 if w in self.vocab)
 
-        Args:
-            early_text: Early modern English input
-            candidates: Optional list of candidates (auto-generated if None)
+            # Add valid 2-edit words only if needed (if very few 1-edit matches)
+            if len(valid_candidates) < 5:
+                candidates_2 = self._edits2(word_lower)
+                valid_candidates.update(w for w in candidates_2 if w in self.vocab)
+        else:
+            # Fallback if no vocab: just return 1-edit distance strings
+            valid_candidates.update(candidates_1)
 
-        Returns:
-            best_candidate, best_score
-        """
-        if candidates is None:
-            candidates = self.generate_candidates(early_text)
+        return list(valid_candidates)
 
-        best_candidate = None
-        best_score = float("-inf")
+    def score_candidate(self, old_word, candidate):
+        """Score = log P(Modern) + log P(Old|Modern)"""
+        # 1. Language Model Score (P(Modern))
+        lm_score = self.lm.score_word(candidate)
 
-        for candidate in candidates:
-            score = self.score(candidate, early_text)
+        # 2. Channel Model Score (P(Old|Modern))
+        prob = self.channel.channel_prob(candidate, old_word)
+        channel_score = math.log(prob) if prob > 0 else -100.0
+
+        return (self.lm_weight * lm_score) + channel_score
+
+    def decode_greedy(self, word):
+        """Find best candidate for a single word."""
+        candidates = self.generate_candidates(word)
+
+        best_word = word
+        best_score = -float("inf")
+
+        for cand in candidates:
+            score = self.score_candidate(word, cand)
+
+            # Boost exact dictionary matches slightly
+            if cand in self.vocab:
+                score += 0.5
+
             if score > best_score:
                 best_score = score
-                best_candidate = candidate
+                best_word = cand
 
-        return best_candidate, best_score
+        # Restore Case
+        if word.istitle():
+            return best_word.title(), best_score
+        if word.isupper():
+            return best_word.upper(), best_score
 
-    def generate_candidates(self, early_text):
-        """
-        Generate candidate modernizations using learned transformations.
-
-        This is much better than before!
-        """
-        candidates = []
-
-        # Candidate 1: No change
-        candidates.append(early_text)
-
-        # Candidate 2: Apply learned word-level rules
-        words = re.findall(r"\b\w+\b", early_text)
-        transformed_words = []
-
-        for word in words:
-            if word in self.word_rules:
-                transformed_words.append(self.word_rules[word])
-            else:
-                transformed_words.append(word)
-
-        # Reconstruct sentence
-        if transformed_words != words:
-            # Simple reconstruction (preserves spaces/punctuation roughly)
-            transformed = early_text
-            for old, new in zip(words, transformed_words):
-                if old != new:
-                    transformed = re.sub(
-                        r"\b" + re.escape(old) + r"\b", new, transformed, count=1
-                    )
-            candidates.append(transformed)
-
-        # Candidate 3: Apply common character-level patterns
-        # Look for common substitutions learned from data
-        if hasattr(self.channel, "substitute_counts"):
-            common_subs = self.channel.substitute_counts.most_common(20)
-
-            variant = early_text
-            for (old_char, new_char), count in common_subs:
-                if count >= 5:  # Only frequent substitutions
-                    # Try reversing the substitution
-                    variant = variant.replace(new_char, old_char)
-
-            if variant != early_text:
-                candidates.append(variant)
-
-        # Candidate 4: Lowercase version (handles capitalization)
-        if early_text != early_text.lower():
-            candidates.append(early_text.lower())
-
-        # Candidate 5: Apply multiple rules together
-        # Combine word and character transformations
-        if len(candidates) > 2:
-            # Apply rules to the word-transformed version
-            combined = candidates[1] if len(candidates) > 1 else early_text
-
-            for (old_char, new_char), count in common_subs[:10]:
-                if count >= 5:
-                    combined = combined.replace(new_char, old_char)
-
-            if combined not in candidates:
-                candidates.append(combined)
-
-        return list(set(candidates))  # Remove duplicates
+        return best_word, best_score
 
 
 ### Updated Data Format Instructions

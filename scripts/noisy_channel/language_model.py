@@ -8,20 +8,19 @@ class CharNgramLM:
     """Character-level n-gram language model with add-k smoothing."""
 
     def __init__(self, n=5, k=0.1):
-        """
-        Args:
-            n: n-gram order (default 5)
-            k: smoothing parameter (default 0.1)
-        """
         self.n = n
         self.k = k
         self.counts = defaultdict(Counter)
         self.vocab = set()
         self.context_totals = defaultdict(int)
+        # Fix: Track known words for the decoder
+        self.known_words = set()
 
     def train(self, texts):
         """Train on list of text strings."""
         print(f"Training {self.n}-gram language model...")
+
+        self.known_words.update(texts)
 
         for text in texts:
             # Add start/end markers
@@ -47,7 +46,6 @@ class CharNgramLM:
         total = self.context_totals[context]
         vocab_size = len(self.vocab)
 
-        # Add-k smoothing
         return (count + self.k) / (total + self.k * vocab_size)
 
     def log_prob(self, text):
@@ -62,13 +60,15 @@ class CharNgramLM:
 
         return log_p
 
+    # Fix: Alias required by Decoder
+    def score_word(self, word):
+        return self.log_prob(word)
+
     def perplexity(self, texts):
         """Compute perplexity on a list of texts."""
         total_log_prob = 0.0
         total_chars = 0
-
         for text in texts:
             total_log_prob += self.log_prob(text)
-            total_chars += len(text) + 1  # +1 for end marker
-
+            total_chars += len(text) + 1
         return math.exp(-total_log_prob / total_chars)

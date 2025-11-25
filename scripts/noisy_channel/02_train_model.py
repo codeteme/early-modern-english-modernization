@@ -87,7 +87,7 @@ def train_from_word_pairs(csv_path, output_path=None):
     print("=" * 70)
 
     # Create decoder
-    decoder = NoisyChannelDecoder(lm, channel, lm_weight=1.0)
+    decoder = NoisyChannelDecoder(lm, channel, lm_weight=0.3)
 
     print(f"\n{'=' * 70}")
     print("Step 4: Saving Models")
