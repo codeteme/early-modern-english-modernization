@@ -78,32 +78,7 @@ This creates aligned word pairs in `data/processed/aligned_old_to_modern_combine
 
 ## Usage
 
-### 1. T5 Transformer
-
-The T5 model provides the best performance for most inputs.
-
-**Training:**
-```bash
-cd scripts/seq2seq
-python finetune_t5.py
-```
-
-**Evaluation:**
-```bash
-cd scripts/seq2seq
-
-# Test with a single sentence
-python eval_seq2seq.py --model-type t5 --input "Thou art most heartily welcome"
-
-# Test with a file of sentences
-python eval_seq2seq.py --model-type t5 --input-file ../../test_sentences.txt
-```
-
-**Outputs:**
-- Model saved to: `models/best_t5_model/`
-- Results saved to: `results/t5_results.txt`
-
-### 2. LSTM with Attention
+### 1. LSTM with Attention
 
 Character-level sequence-to-sequence model with attention mechanism.
 
@@ -128,7 +103,7 @@ python eval_seq2seq.py --model-type lstm --input-file ../../test_sentences.txt
 - Model saved to: `models/best_model.pt`
 - Results saved to: `results/lstm_results.txt`
 
-### 3. Noisy Channel Model
+### 2. Noisy Channel Model
 
 Word-level probabilistic model combining a language model and channel model.
 
@@ -225,13 +200,11 @@ See [model_comparison.md](model_comparison.md) for detailed performance comparis
 
 | Model | Strengths | Weaknesses |
 |-------|-----------|------------|
-| **T5** | Best overall accuracy, handles most spelling patterns | Occasional hallucinations on rare words |
 | **LSTM** | Good at character-level patterns | Capitalization errors, mode collapse issues |
 | **Noisy Channel** | Interpretable, fast | Limited pattern learning, requires extensive word pairs |
 
 ### Performance Highlights
 
-- **T5**: Successfully normalizes most spelling variations (haue→have, seene→seen, owne→own)
 - **LSTM**: Struggles with consistency, produces artifacts like "WITTOL", "Yhe"
 - **Noisy Channel**: Learned basic patterns (Hee→He) but misses most transformations
 
@@ -246,9 +219,6 @@ Thou art most heartily welcome to this place.
 I cannot conceiue why thou wouldst refuse.
 The storme shall come vpon vs this euening.
 EOF
-
-# Test with T5
-python scripts/seq2seq/eval_seq2seq.py --model-type t5 --input-file my_test.txt
 
 # Test with LSTM
 python scripts/seq2seq/eval_seq2seq.py --model-type lstm --input-file my_test.txt
@@ -266,20 +236,17 @@ The training scripts automatically detect and use available GPU acceleration:
 ### Training Time
 
 Approximate training times on Apple M1:
-- **T5**: ~20-30 minutes (depends on dataset size)
 - **LSTM**: ~15-25 minutes
 - **Noisy Channel**: ~5-10 minutes
 
 ### Model Size
 
-- **T5 model**: ~500MB (tokenizer + weights)
 - **LSTM model**: ~9MB
 - **Noisy Channel**: ~200KB
 
 ## References
 
 - Data source: [Shakespeare's Words](https://www.shakespeareswords.com)
-- T5 Paper: [Exploring the Limits of Transfer Learning](https://arxiv.org/abs/1910.10683)
 - Noisy Channel approach: Probabilistic models for spelling correction
 
 ## License
