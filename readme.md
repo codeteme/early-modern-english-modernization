@@ -8,9 +8,8 @@ This project explores different methods for automatically modernizing Early Mode
 
 ### Models Implemented
 
-1. **T5 Transformer** - Fine-tuned pre-trained transformer model (best performance)
-2. **LSTM with Attention** - Character-level encoder-decoder with attention mechanism
-3. **Noisy Channel Model** - Probabilistic model using word-level transformations
+1. **LSTM with Attention** - Character-level encoder-decoder with attention mechanism
+2. **Noisy Channel Model** - Probabilistic model using word-level transformations
 
 ## Quick Start
 
@@ -110,7 +109,11 @@ Word-level probabilistic model combining a language model and channel model.
 **Setup (one-time):**
 ```bash
 cd scripts/noisy_channel
-python setup.py
+python 01_build_dictionary.py  # build work pairs
+python 01_translate_heuristic.py  # Run heuristic model
+
+python 02_train_model.py  # train noisy channel model
+python 02_evaluate_noisy_channel.py  # evaluation metrics for noisy channel model
 ```
 
 This creates:
