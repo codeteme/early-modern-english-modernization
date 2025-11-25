@@ -138,7 +138,7 @@ def evaluate(translator):
 
         total_acc = 0
         count = 0
-        limit = min(40, len(lines))  # Evaluate the first 20 pairs
+        limit = min(885, len(lines))  # Run test on the entire 885 pairs or 1,770 lines
 
         for i in range(0, limit, 2):
             if i + 1 >= len(lines):

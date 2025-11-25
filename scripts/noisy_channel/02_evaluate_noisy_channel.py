@@ -92,7 +92,9 @@ def evaluate_test_set(decoder):
 
         total_acc = 0
         count = 0
-        limit = min(40, len(lines))  # Show first 20 pairs (40 lines)
+        limit = min(
+            1_770, len(lines)
+        )  # Run test on the entire 885 pairs or 1,770 lines
 
         for i in range(0, limit, 2):
             if i + 1 >= len(lines):

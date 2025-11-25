@@ -210,4 +210,4 @@ def compute_word_weights(
 if __name__ == "__main__":
     create_parallel_corpus()
     compute_word_weights()
-    print("\n✓ Robust Setup complete! Now run: python translate.py")
+    print("\n Robust Setup complete! Now run: python 01_translate_heuristic.py")
