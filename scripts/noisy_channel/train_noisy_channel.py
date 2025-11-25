@@ -1,90 +1,137 @@
-"""Train noisy channel model."""
+#!/usr/bin/env python3
+"""Train noisy channel model from extracted word pairs."""
 
 import sys
 import pickle
+import pandas as pd
+from pathlib import Path
 
-sys.path.append(".")
+# Add project root to path
+project_root = Path(__file__).parents[2]
+sys.path.insert(0, str(project_root))
 
-from scripts.language_model import CharNgramLM
-from scripts.channel_model import ChannelModel
-from scripts.noisy_channel import NoisyChannelDecoder
-from scripts.utils import load_parallel_data
+from scripts.noisy_channel.language_model import CharNgramLM
+from scripts.noisy_channel.channel_model import ChannelModel
+from scripts.noisy_channel.decoder import NoisyChannelDecoder
 
 
-def train_on_dataset(data_type="synthetic"):
-    """
-    Train models on specified dataset.
+def load_word_pairs(csv_path):
+    """Load word pairs from CSV file.
 
     Args:
-        data_type: 'synthetic' or 'processed' (real data)
+        csv_path: Path to CSV file with 'old' and 'modern' columns
+
+    Returns:
+        List of (modern, old) tuples for training
     """
-    print(f"\n{'='*60}")
-    print(f"Training on {data_type} data")
-    print("=" * 60)
+    print(f"Loading word pairs from: {csv_path}")
+    df = pd.read_csv(csv_path)
 
-    # Load training data
-    train_pairs = load_parallel_data(
-        f"data/{data_type}/train_early.txt", f"data/{data_type}/train_modern.txt"
-    )
+    # Convert to list of (modern, early) pairs
+    pairs = list(zip(df["modern"].values, df["old"].values))
 
-    print(f"Loaded {len(train_pairs)} training pairs\n")
+    print(f"Loaded {len(pairs)} word pairs")
+    print(f"\nSample pairs:")
+    for i, (modern, old) in enumerate(pairs[:10], 1):
+        print(f"  {i}. {old:15s} → {modern}")
 
-    # Train language model
-    print("1. Training language model...")
-    modern_texts = [modern for modern, _ in train_pairs]
+    return pairs
+
+
+def train_from_word_pairs(csv_path, output_path=None):
+    """
+    Train noisy channel model from word pairs CSV.
+
+    Args:
+        csv_path: Path to CSV with word pairs
+        output_path: Path to save trained model (default: models/word_pairs_model.pkl)
+    """
+    if output_path is None:
+        output_path = Path(__file__).parents[2] / "models" / "word_pairs_model.pkl"
+
+    print("=" * 70)
+    print("Training Noisy Channel Model from Word Pairs")
+    print("=" * 70)
+    print()
+
+    # Load word pairs
+    pairs = load_word_pairs(csv_path)
+
+    # Extract modern and early texts
+    modern_texts = [modern for modern, _ in pairs]
+    early_texts = [early for _, early in pairs]
+
+    print(f"\n{'=' * 70}")
+    print("Step 1: Training Language Model")
+    print("=" * 70)
+
+    # Train language model on modern texts
     lm = CharNgramLM(n=5, k=0.1)
     lm.train(modern_texts)
 
-    # Compute perplexity on training data
-    train_ppl = lm.perplexity(modern_texts[:100])  # Sample for speed
-    print(f"Training perplexity: {train_ppl:.2f}\n")
+    # Compute perplexity
+    sample_size = min(100, len(modern_texts))
+    train_ppl = lm.perplexity(modern_texts[:sample_size])
+    print(f"Training perplexity: {train_ppl:.2f}")
+
+    print(f"\n{'=' * 70}")
+    print("Step 2: Training Channel Model")
+    print("=" * 70)
 
     # Train channel model
-    print("2. Training channel model...")
-    channel = ChannelModel(alpha=1.0)
-    channel.train(train_pairs)
-    print()
+    channel = ChannelModel(alpha=1.0, use_word_features=True)
+    channel.train(pairs)
+
+    print(f"\n{'=' * 70}")
+    print("Step 3: Creating Decoder")
+    print("=" * 70)
 
     # Create decoder
-    print("3. Creating noisy channel decoder...")
     decoder = NoisyChannelDecoder(lm, channel, lm_weight=1.0)
-    print("Done!\n")
+
+    print(f"\n{'=' * 70}")
+    print("Step 4: Saving Models")
+    print("=" * 70)
 
     # Save models
-    import os
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    os.makedirs("models", exist_ok=True)
-
-    model_path = f"models/{data_type}_model.pkl"
-    with open(model_path, "wb") as f:
+    with open(output_path, "wb") as f:
         pickle.dump({"lm": lm, "channel": channel, "decoder": decoder}, f)
 
-    print(f"Models saved to {model_path}")
+    print(f"✓ Models saved to: {output_path}")
 
+    print(f"\n{'=' * 70}")
+    print("Step 5: Testing on Sample Data")
+    print("=" * 70)
+
+    # Test on a few examples
+    test_samples = early_texts[:5]
+    print("\nSample translations:")
+    for i, early_word in enumerate(test_samples, 1):
+        modern_word, score = decoder.decode_greedy(early_word)
+        print(f"  {i}. {early_word:15s} → {modern_word:15s} (score: {score:.2f})")
+
+    print("\n✓ Training complete!")
     return lm, channel, decoder
 
 
 def main():
-    """Train on both synthetic and real data."""
+    """Train model from word pairs."""
+    # Path to the combined word pairs CSV
+    project_root = Path(__file__).parents[2]
+    csv_path = (
+        project_root / "data" / "processed" / "aligned_old_to_modern_combined.csv"
+    )
 
-    # Train on synthetic data (Step 3a)
-    print("\n" + "=" * 60)
-    print("STEP 3a: Training on SYNTHETIC data")
-    print("=" * 60)
-    train_on_dataset("synthetic")
+    if not csv_path.exists():
+        print(f"Error: Word pairs file not found at {csv_path}")
+        print("Please run extract_word_pairs.py first")
+        sys.exit(1)
 
-    # Train on real data (Step 3b)
-    print("\n" + "=" * 60)
-    print("STEP 3b: Training on REAL data")
-    print("=" * 60)
-
-    import os
-
-    if os.path.exists("data/processed/train_early.txt"):
-        train_on_dataset("processed")
-    else:
-        print("Real data not found. Run preprocess_data.py first.")
-        print("Skipping real data training for now.")
+    # Train the model
+    train_from_word_pairs(csv_path)
 
 
 if __name__ == "__main__":

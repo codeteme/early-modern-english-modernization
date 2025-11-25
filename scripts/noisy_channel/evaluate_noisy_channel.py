@@ -1,144 +1,166 @@
-"""Evaluate trained models."""
+#!/usr/bin/env python3
+"""
+Evaluation script for Noisy Channel spelling normalization model
 
-import sys
+This script evaluates the word-level Noisy Channel model on Old English text normalization.
+
+Usage:
+    python scripts/noisy_channel/eval_word_pairs.py --input "I cannot conceiue you"
+    python scripts/noisy_channel/eval_word_pairs.py --input-file test_sentences.txt
+"""
+
+import argparse
 import pickle
+import re
+import sys
+from pathlib import Path
 
-sys.path.append(".")
+# Add project root to path for pickle imports
+project_root = Path(__file__).parents[2]
+sys.path.insert(0, str(project_root))
 
-from scripts.utils import load_parallel_data, compute_metrics
+
+# ============================================================================
+# Model Loading
+# ============================================================================
 
 
-def evaluate_model(data_type="synthetic", model_type="synthetic"):
-    """
-    Evaluate model on test set.
+def load_noisy_channel_model(model_path="models/word_pairs_model.pkl"):
+    """Load the word pairs noisy channel model"""
+    print(f"Loading Noisy Channel model from {model_path}...")
 
-    Args:
-        data_type: Dataset to evaluate on ('synthetic' or 'processed')
-        model_type: Model to use ('synthetic' or 'processed')
-    """
-    print(f"\n{'='*60}")
-    print(f"Evaluating {model_type} model on {data_type} test set")
-    print("=" * 60)
+    # Resolve path
+    if not Path(model_path).is_absolute():
+        model_path = project_root / model_path
 
-    # Load model
-    model_path = f"models/{model_type}_model.pkl"
     with open(model_path, "rb") as f:
         models = pickle.load(f)
 
     decoder = models["decoder"]
+    print("Model loaded successfully!")
 
-    # Load test data
-    test_pairs = load_parallel_data(
-        f"data/{data_type}/test_early.txt", f"data/{data_type}/test_modern.txt"
-    )
+    return decoder
 
-    print(f"Loaded {len(test_pairs)} test pairs\n")
 
-    # Generate predictions
-    predictions = []
-    references = []
+# ============================================================================
+# Sentence Processing
+# ============================================================================
 
-    print("Generating predictions...")
-    for modern_ref, early in test_pairs:
-        # Generate candidates
-        candidates = decoder.generate_candidates(early)
 
-        # Decode
-        prediction, score = decoder.decode_greedy(early, candidates)
+def tokenize_sentence(sentence):
+    """Split sentence into words while preserving punctuation and spacing"""
+    words = []
+    spaces = []
 
-        predictions.append(prediction)
-        references.append(modern_ref)
+    tokens = sentence.split()
+    for i, token in enumerate(tokens):
+        words.append(token)
+        if i < len(tokens) - 1:
+            spaces.append(" ")
 
-    # Compute metrics
-    print("\nComputing metrics...")
-    metrics = compute_metrics(predictions, references)
+    return words, spaces
 
-    print(f"\nResults:")
-    print(f"  Exact Match Accuracy: {metrics['exact_match_accuracy']:.2%}")
-    print(f"  Character Error Rate: {metrics['character_error_rate']:.4f}")
-    print(f"  Exact Matches: {metrics['exact_matches']} / {metrics['total']}")
 
-    # Show examples
-    print(f"\n{'='*60}")
-    print("Example Predictions:")
-    print("=" * 60)
+def normalize_sentence_word_by_word(sentence, decoder):
+    """Normalize a sentence by processing each word separately"""
+    words, spaces = tokenize_sentence(sentence)
+    normalized_words = []
 
-    for i in range(min(10, len(test_pairs))):
-        modern_ref, early = test_pairs[i]
-        pred = predictions[i]
+    for word in words:
+        # Separate punctuation
+        match = re.match(r"^([^\w]*)([\w]+)([^\w]*)$", word)
+        if match:
+            prefix, core, suffix = match.groups()
+            # Normalize the core word
+            normalized_core, _ = decoder.decode_greedy(core.lower())
+            # Preserve capitalization
+            if core and core[0].isupper():
+                normalized_core = normalized_core.capitalize()
+            normalized_word = prefix + normalized_core + suffix
+        else:
+            # No word core found, keep as is
+            normalized_word = word
 
-        match = "✓" if pred == modern_ref else "✗"
+        normalized_words.append(normalized_word)
 
-        print(f"\n{match} Example {i+1}:")
-        print(f"  Early:      {early}")
-        print(f"  Predicted:  {pred}")
-        print(f"  Reference:  {modern_ref}")
+    # Reconstruct sentence
+    result = []
+    for i, word in enumerate(normalized_words):
+        result.append(word)
+        if i < len(spaces):
+            result.append(spaces[i])
 
-    # Save results
-    import os
+    return "".join(result)
 
-    os.makedirs("results", exist_ok=True)
 
-    result_file = f"results/{model_type}_on_{data_type}.txt"
-    with open(result_file, "w") as f:
-        f.write(f"Model: {model_type}\n")
-        f.write(f"Test Set: {data_type}\n")
-        f.write(f"Exact Match Accuracy: {metrics['exact_match_accuracy']:.2%}\n")
-        f.write(f"Character Error Rate: {metrics['character_error_rate']:.4f}\n")
-        f.write(f"\nExamples:\n")
-        f.write("=" * 60 + "\n")
-
-        for i in range(len(test_pairs)):
-            modern_ref, early = test_pairs[i]
-            pred = predictions[i]
-            match = "✓" if pred == modern_ref else "✗"
-
-            f.write(f"\n{match} Example {i+1}:\n")
-            f.write(f"  Early:      {early}\n")
-            f.write(f"  Predicted:  {pred}\n")
-            f.write(f"  Reference:  {modern_ref}\n")
-
-    print(f"\nResults saved to {result_file}")
-
-    return metrics
+# ============================================================================
+# Main Function
+# ============================================================================
 
 
 def main():
-    """Run all evaluations."""
-    import os
+    parser = argparse.ArgumentParser(
+        description="Evaluate Noisy Channel spelling normalization on sentences"
+    )
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default="models/word_pairs_model.pkl",
+        help="Path to model (default: models/word_pairs_model.pkl)",
+    )
+    parser.add_argument("--input", type=str, help="Input sentence to normalize")
+    parser.add_argument(
+        "--input-file", type=str, help="File with sentences to normalize (one per line)"
+    )
 
-    results = {}
+    args = parser.parse_args()
 
-    # Evaluate synthetic model on synthetic data
-    if os.path.exists("models/synthetic_model.pkl"):
-        results["synthetic_on_synthetic"] = evaluate_model("synthetic", "synthetic")
+    # Load model
+    decoder = load_noisy_channel_model(args.model_path)
 
-    # Evaluate real model on real data
-    if os.path.exists("models/processed_model.pkl") and os.path.exists(
-        "data/processed/test_early.txt"
-    ):
-        results["processed_on_processed"] = evaluate_model("processed", "processed")
+    print("=" * 80)
 
-    # Cross-evaluation: synthetic model on real data
-    if os.path.exists("models/synthetic_model.pkl") and os.path.exists(
-        "data/processed/test_early.txt"
-    ):
-        results["synthetic_on_processed"] = evaluate_model("processed", "synthetic")
+    # Get input sentences
+    if args.input:
+        sentences = [args.input]
+    elif args.input_file:
+        with open(args.input_file, "r") as f:
+            sentences = [line.strip() for line in f if line.strip()]
+    else:
+        # Interactive mode
+        print("\nInteractive mode - Enter sentences to normalize (Ctrl+C to exit)")
+        print("=" * 80)
+        sentences = []
+        try:
+            while True:
+                sentence = input("\nOld English: ").strip()
+                if sentence:
+                    sentences.append(sentence)
 
-    # Summary table
-    print(f"\n{'='*60}")
-    print("SUMMARY OF ALL RESULTS")
-    print("=" * 60)
-    print(f"{'Model':<20} {'Test Set':<20} {'Exact Match':<15} {'CER':<10}")
-    print("-" * 60)
+                    # Process immediately in interactive mode
+                    normalized = normalize_sentence_word_by_word(sentence, decoder)
 
-    for key, metrics in results.items():
-        model, test = key.split("_on_")
-        print(
-            f"{model:<20} {test:<20} "
-            f"{metrics['exact_match_accuracy']:>14.2%} "
-            f"{metrics['character_error_rate']:>9.4f}"
-        )
+                    print(f"Modern:      {normalized}")
+                    sentences = []  # Clear after processing
+        except KeyboardInterrupt:
+            print("\n\nExiting...")
+            return
+
+    # Process batch mode
+    if sentences:
+        print("\nProcessing sentences...")
+        print("=" * 80)
+
+        for i, sentence in enumerate(sentences, 1):
+            print(f"\n[{i}/{len(sentences)}]")
+            print(f"Old:    {sentence}")
+
+            normalized = normalize_sentence_word_by_word(sentence, decoder)
+
+            print(f"Modern: {normalized}")
+
+        print("\n" + "=" * 80)
+        print("Processing complete!")
 
 
 if __name__ == "__main__":
