@@ -53,11 +53,7 @@ sentencepiece>=0.2.1
 
 The project uses parallel texts from Shakespeare's works scraped from ShakespearesWords.com.
 
-### Option 1: Use Provided Data
-
-The repository includes pre-scraped parallel texts in `data/old_merged.txt` and `data/new_merged.txt` from 30 Shakespeare plays.
-
-### Option 2: Scrape New Data
+### Scrape Data
 
 ```bash
 # Scrape Shakespeare texts from ShakespearesWords.com
@@ -82,7 +78,7 @@ This creates aligned word pairs in `data/processed/aligned_old_to_modern_combine
 
 ## Usage
 
-### 1. T5 Transformer (Recommended)
+### 1. T5 Transformer
 
 The T5 model provides the best performance for most inputs.
 
