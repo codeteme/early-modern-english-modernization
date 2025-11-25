@@ -253,8 +253,8 @@ class T5SpellingNormalizer:
             # Early stopping
             if val_loss < best_val_loss - 0.001:
                 best_val_loss = val_loss
-                self.model.save_pretrained("../../model/best_t5_model")
-                self.tokenizer.save_pretrained("../../model/best_t5_model")
+                self.model.save_pretrained("models/best_t5_model")
+                self.tokenizer.save_pretrained("models/best_t5_model")
                 patience_counter = 0
                 print(f"  → New best model saved! (val_loss: {val_loss:.4f})")
             else:
@@ -266,7 +266,7 @@ class T5SpellingNormalizer:
         # Load best model
         print("\nLoading best model...")
         self.model = T5ForConditionalGeneration.from_pretrained(
-            "../../model/best_t5_model"
+            "models/best_t5_model"
         )
         self.model.to(device)
 
@@ -352,7 +352,7 @@ class T5SpellingNormalizer:
             print(f"  Match: {match}")
             print()
 
-    def save_model(self, path="../../models/t5_spelling_normalizer"):
+    def save_model(self, path="models/t5_spelling_normalizer"):
         """Save model and tokenizer"""
         self.model.save_pretrained(path)
         self.tokenizer.save_pretrained(path)
@@ -361,7 +361,7 @@ class T5SpellingNormalizer:
 
 def main():
     """Main training script"""
-    CSV_PATH = "../../data/processed/aligned_old_to_modern_extracted.csv"  # Using larger dataset (2,468 pairs)
+    CSV_PATH = "data/processed/aligned_old_to_modern_extracted.csv"  # Using larger dataset (2,468 pairs)
 
     # Use t5-small for memory efficiency
     # Can upgrade to t5-base for better quality if you have more memory

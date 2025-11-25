@@ -521,7 +521,7 @@ class SpellingNormalizer:
             # Early stopping with improvement threshold
             if val_loss < best_val_loss - 0.001:  # Require meaningful improvement
                 best_val_loss = val_loss
-                torch.save(self.model.state_dict(), "../../models/best_model.pt")
+                torch.save(self.model.state_dict(), "models/best_model.pt")
                 patience_counter = 0
                 print(f"  → New best model saved! (val_loss: {val_loss:.4f})")
             else:
@@ -531,7 +531,7 @@ class SpellingNormalizer:
                     break
 
         # Load best model
-        self.model.load_state_dict(torch.load("../../models/best_model.pt"))
+        self.model.load_state_dict(torch.load("models/best_model.pt"))
         self._plot_history(history)
 
         return history
@@ -568,7 +568,7 @@ class SpellingNormalizer:
 
         plt.tight_layout()
         plt.savefig("training_history.png", dpi=150)
-        print("\nTraining history saved as '../../images/training_history.png'")
+        print("\nTraining history saved as 'images/training_history_lstm.png'")
         plt.close()
 
     def normalize_text(self, text):
@@ -621,7 +621,7 @@ class SpellingNormalizer:
             print(f"  Predicted:    {predicted_text}")
             print()
 
-    def save_model(self, filepath="../../models/spelling_normalizer_pytorch.pt"):
+    def save_model(self, filepath="models/spelling_normalizer_pytorch.pt"):
         """Save model and metadata"""
         torch.save(
             {
@@ -641,7 +641,7 @@ class SpellingNormalizer:
 
 def main():
     """Main training script"""
-    CSV_PATH = "../../data/processed/aligned_old_to_modern_combined.csv"
+    CSV_PATH = "data/processed/aligned_old_to_modern_combined.csv"
 
     # Optimized for word-level aligned data with larger dataset (2468 pairs)
     # Larger model for better capacity

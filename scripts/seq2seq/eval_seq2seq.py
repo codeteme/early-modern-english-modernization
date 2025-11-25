@@ -93,7 +93,7 @@ class Seq2Seq(nn.Module):
 # T5 Model Loading
 # ============================================================================
 
-def load_t5_model(model_path='best_t5_model'):
+def load_t5_model(model_path='models/best_t5_model'):
     """Load a fine-tuned T5 model"""
     from transformers import T5Tokenizer, T5ForConditionalGeneration
 
@@ -146,11 +146,11 @@ def normalize_with_t5(text, model, tokenizer, device, max_length=128):
 # LSTM Model Loading
 # ============================================================================
 
-def load_lstm_model(model_path='spelling_normalizer_pytorch.pt'):
+def load_lstm_model(model_path='models/spelling_normalizer_pytorch.pt'):
     """Load a trained LSTM model"""
     print(f"Loading LSTM model from {model_path}...")
 
-    checkpoint = torch.load(model_path, map_location='cpu')
+    checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
 
     # Extract checkpoint data
     input_vocab = checkpoint['input_vocab']
@@ -278,7 +278,7 @@ def main():
         '--model-path',
         type=str,
         default=None,
-        help='Path to model (default: best_t5_model or spelling_normalizer_pytorch.pt)'
+        help='Path to model (default: models/best_t5_model or models/spelling_normalizer_pytorch.pt)'
     )
     parser.add_argument(
         '--mode',
@@ -301,7 +301,7 @@ def main():
 
     # Determine model path
     if args.model_path is None:
-        args.model_path = 'best_t5_model' if args.model_type == 't5' else 'spelling_normalizer_pytorch.pt'
+        args.model_path = 'models/best_t5_model' if args.model_type == 't5' else 'models/spelling_normalizer_pytorch.pt'
 
     # Load model
     if args.model_type == 't5':
